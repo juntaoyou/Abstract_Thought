@@ -14,7 +14,7 @@ nowtime = datetime.datetime.now()
 date_string = nowtime.strftime("%Y-%m-%d")
 
 prompt_template = "[Guidelines] Your task is to generate response for the following instruction\n[Instruction] {query}"
-def generate_response_with_qwen(args, max_length=512, temperature=0.8, batch_size=16, num_beams=5):
+def generate_response_with_qwen(args, max_length=256, temperature=0.8, batch_size=24, num_beams=5):
     model_name = args.model_name
     messages = load_dataset("json", data_files=args.train_data_path, cache_dir="/NAS/yjt/HuggingfaceCache")['train']
     oddindices = [i for i in range(len(messages)) if i % 2 == 0]
@@ -61,7 +61,6 @@ def generate_response_with_qwen(args, max_length=512, temperature=0.8, batch_siz
                     num_return_sequences=num_beams,
                     pad_token_id=tokenizer.eos_token_id,  # 设置pad token
                     eos_token_id=tokenizer.eos_token_id,   # 设置结束token
-                    early_stopping=True  
                 )
             # all_result = []
             for i in range(len(prompt)):
