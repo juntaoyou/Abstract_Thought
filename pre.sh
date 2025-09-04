@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=3 python ./pre.py
+CUDA_VISIBLE_DEVICES=1 python ./pre.py

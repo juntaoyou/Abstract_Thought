@@ -1,99 +1,189 @@
-# The code are used to evaluate the ability of open-source LLM to generate useful responses on preferences dimensions
-import transformers
-from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
-import argparse
+from vllm import LLM, SamplingParams
+# from vllm.model_executor.models.reward_model import RewardModel
+from transformers import AutoModelForCausalLM
 import torch
-from tqdm import tqdm
-from transformers import default_data_collator
 from datasets import load_dataset
-import json
-import datetime
 from torch.utils.data import DataLoader
-set_seed(42)
+from tqdm import tqdm
+import json
+import os
+from transformers import AutoTokenizer
+import re
+import datetime
 nowtime = datetime.datetime.now()
-date_string = nowtime.strftime("%Y-%m-%d")
+date_string = nowtime.strftime("%Y-%m-%d %H:%M:%S")
 
-prompt_template = "[Guidelines] Your task is to generate response for the following instruction\n[Instruction] {query}"
-def generate_response_with_qwen(args, max_length=256, temperature=0.8, batch_size=24, num_beams=5):
-    model_name = args.model_name
-    messages = load_dataset("json", data_files=args.train_data_path, cache_dir="/NAS/yjt/HuggingfaceCache")['train']
-    oddindices = [i for i in range(len(messages)) if i % 2 == 0]
-    def generate_prompt(x):
-        x['prompt'] = prompt_template.format_map({'query': x['prompt']})
-        
-        return x
-    messages = messages.select(oddindices).map(generate_prompt)  
-    dataloader = DataLoader(
-        messages['prompt'],
-        batch_size=batch_size,
-        shuffle=False,
-        # pin_memory=True
+helpdfulness_template = (
+"You are required to act as a professional scoring model. "
+"For the query (user question) and corresponding response (answer content), you must score from a **single dimension** only, without considering the performance in other dimensions."
+"A 0-4 point scoring system is adopted, with specific dimension definitions and scoring criteria as follows:\n"
+"Dimension: Helpfulness\n"
+"Point 0: The response is not useful or helpful at all. The response completely missed the essence of  what the user wanted.\n"
+"Point 1: The response is borderline unhelpful and mostly does not capture what the user was looking  for, but it is still usable and helpful in a small way.\n"
+"Point 2: The response is partially helpful but misses the overall goal of the user’s query/input in some  way. The response did not fully satisfy what the user was looking for.\n"  
+"Point 3: The response is mostly helpful and mainly aligned with what the user was looking for, but  there is still some room for improvement.\n"
+"Point 4: The response is extremely helpful and completely aligned with the spirit of what the prompt was asking for.\n"
+"Based on the above criteria, score the Helpfulness dimension of the following query and response without explanation:\n"
+)
+
+user_content = (
+"Query: {query}\n"
+"response:{response}\n"
+"Score:\n"
+)
+
+def evaluate_with_judge_model(model_name, prompts, responses, batch_size=16, system_prompt="You are a helpful assistant."):
+    scores = []
+    total = len(prompts)
+    sampling_params = SamplingParams(
+        max_tokens=16,
+        skip_special_tokens=True,
+        temperature=0.8,
+        top_p=0.95
     )
-    
+    llm = LLM(model_name, gpu_memory_utilization=0.9)
     tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side='left')
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.bfloat16,
-        device_map="auto"  
+    pattern = r"^\s*(\d+\.?\d*)"
+    # pattern = r"\d"
+    for i in tqdm(range(0, total, batch_size), desc="Loading Data: "):
+        end_idx = min(total, i + batch_size)
+        batch_prompts = prompts[i: end_idx]
+        batch_responses = responses[i: end_idx]
+        querys = [[{"role":'system',"content": system_prompt},
+                    {"role":'user', 'content': user_content.format_map({'query': q, 'response':r})}]
+                    for q, r in zip(batch_prompts, batch_responses)]
+        chat_prompts = tokenizer.apply_chat_template(querys, tokenize=False, add_generation_prompt=True)
+        outputs = llm.generate(chat_prompts, sampling_params)
+        batch_scores = [int(re.match(pattern, score.outputs[0].text).group(1))
+            for score in outputs]
+        for score in batch_scores:
+            if score < 0 or score > 5:
+                raise ValueError("Invalid score value.")
+        scores.extend(batch_scores)
+    return scores
+    
+
+def process_and_evaluate(
+    generator_model_name,
+    batch_size=8,
+    num_beams=5,
+    output_file=f"./predictions/pre/responses_{date_string}"
+):
+    dataset = load_dataset("json", data_files="../Mydatasets/HelpSteer2/validation.jsonl")['train']
+    dataset = dataset.select([i for i in range(0, len(dataset), 2)])
+    print(f"加载数据集完成，共 {len(dataset)} 个样本")
+    tokenizer = AutoTokenizer.from_pretrained(generator_model_name, padding_side='left')
+    chat_prompts = [
+        tokenizer.apply_chat_template(
+            [{'role':'system', 'content': "You are a helpful assistant.\n"}, {"role": "user", "content": q}],
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        for q in dataset["prompt"]
+    ]
+
+    print("开始生成回答...")
+    sampling_params = SamplingParams(
+        n=num_beams,
+        max_tokens=256,
+        skip_special_tokens=True,
+        temperature=0.7, 
+        top_p=0.95
     )
-    model.eval()
-    results = []
     
-    try:
-        for message in tqdm(dataloader, desc="处理进度"):
-            message = [[{"role": "system", "content": "You are a helpful assistant."}, 
-                       {"role": "user", "content": m}] for m in message]
-            prompt = tokenizer.apply_chat_template(
-                message, 
-                tokenize=False,
-                add_generation_prompt=True  
-            )
-            inputs = tokenizer(prompt, return_tensors="pt", padding=True,truncation=True).to(model.device)
-            with torch.no_grad(): 
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=max_length,
-                    temperature=temperature,
-                    do_sample=True,  
-                    num_beams=num_beams,
-                    return_dict_in_generate=True, # 关键参数：返回生成的字典格式结果
-                    output_scores=True,           # 关键参数：返回每个step的分数
-                    num_return_sequences=num_beams,
-                    pad_token_id=tokenizer.eos_token_id,  # 设置pad token
-                    eos_token_id=tokenizer.eos_token_id,   # 设置结束token
-                )
-            # all_result = []
-            for i in range(len(prompt)):
-                sample_beams = []
-                l = len(inputs["input_ids"][i])
-                for beam_idx in range(num_beams):
-                    generated_text = tokenizer.decode(
-                        outputs.sequences[i * num_beams + beam_idx][l:],
-                        skip_special_tokens=True
-                    )
-                    score = outputs.sequences_scores[i * num_beams + beam_idx].item()
-                    sample_beams.append({
-                        "beam_index": beam_idx,
-                        "score": score,
-                        "response": generated_text
-                    })
-                
-                # 按分数排序并添加到结果列表
-                sample_beams.sort(key=lambda x: x["score"], reverse=True)
-                results.append({'query': message[i], "respones": sample_beams})
-            torch.cuda.empty_cache()
-    except Exception as e:
-        print(f"生成回答时发生错误: {str(e)}")
+    llm = LLM(
+        model=generator_model_name,
+        tensor_parallel_size=1, 
+        gpu_memory_utilization=0.9,
+        trust_remote_code=True
+    )
     
-    return results
+    all_responses = []
+    for i in tqdm(range(0, len(chat_prompts), batch_size), desc="生成回答"):
+        end_idx = min(i + batch_size, len(chat_prompts))
+        batch_prompts = chat_prompts[i:end_idx]        
+        outputs = llm.generate(batch_prompts, sampling_params)
+        j = i
+        for output in outputs:
+            sample_responses = [o.text for o in output.outputs]
+            all_responses.append({
+                "query": dataset["prompt"][j],
+                "responses": sample_responses,
+            })
+            j += 1
+            
+    with open(output_file, 'w') as f:
+        json.dump(all_responses, f, ensure_ascii=False, indent=4)
+
+def evaluate(file_path, 
+             model_name = "../models/Qwen2.5-72B-Instruct-AWQ",
+             preference="helpfulness",
+             batch_size=16,
+             output_file="./predictions/pre/scores.json",
+             num_beams=10):
+    with open(file_path, 'r') as f:
+        all_responses = json.load(f)
+
+    eval_prompts = []
+    eval_responses = []
+    response_indices = []
+    
+    for idx, item in enumerate(all_responses):
+        for resp in item["responses"]:
+            eval_prompts.append(item["query"])
+            eval_responses.append(resp)
+            response_indices.append(idx)
+
+    if preference == "helpfulness":
+        system_prompt = helpdfulness_template
+    elif preference == "correctness":
+        system_prompt = ""
+    elif preference == "coherence":
+        system_prompt = ""
+    else:
+        raise ValueError("Invalid Prefence")
+    
+    print("加载Judge Model并开始评估...")
+    scores = evaluate_with_judge_model(
+        model_name,
+        eval_prompts,
+        eval_responses,
+        batch_size=batch_size,
+        system_prompt=system_prompt
+    )
+    print("整理评估结果...")
+    for i, score in enumerate(scores):
+        idx = response_indices[i]
+        beam_idx = i % num_beams
+        all_responses[idx]["responses"][beam_idx] = {
+            "text": all_responses[idx]["responses"][beam_idx],
+            "score": score
+        }
+    
+    # # 为每个样本找到最佳评分的回答
+    # for item in all_responses:
+    #     item["best_response"] = max(
+    #         item["responses"],
+    #         key=lambda x: x["score"]
+    #     )
+    
+    # 6. 保存结果
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(all_responses, f, ensure_ascii=False, indent=4)
+    
+    print(f"评估完成，结果已保存至 {output_file}")
+    return all_responses
 
 if __name__ == "__main__":
-    # 构建prompt模板
-    parser = argparse.ArgumentParser(description='Parameters')
-    parser.add_argument("--model_name", type=str, help="Model name to generate reponse", default="/NAS/yjt/models/Qwen2.5-3B-Instruct")    
-    parser.add_argument("--train_data_path", type = str, help = "Train data path", default="/NAS/yjt/Mydatasets/HelpSteer2/train.jsonl")
-    args = parser.parse_args()
-    result = generate_response_with_qwen(args)
-    with open(f"./predictions/pre/results_{date_string}.json", 'w') as f:
-        json.dump(result, f, indent=4, ensure_ascii=False)
+    response_file=f"./predictions/pre/responses_{date_string}"
+    # process_and_evaluate(
+    #     generator_model_name="../models/Qwen2.5-3B-Instruct",
+    #     model_name="/NAS/yjt/models/Skywork-Reward-V2-Llama-3.1-8B",
+    #     batch_size=16,
+    #     num_beams=10,
+    #     output_file=response_file
+    # )
+    torch.cuda.empty_cache()
+    results = evaluate(file_path="/NAS/yjt/Abstract_Thought/predictions/pre/helpfulness/responses_2025-09-04 17:41:39.json", 
+                       preference="helpfulness")
     
