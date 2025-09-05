@@ -26,6 +26,32 @@ helpdfulness_template = (
 "Based on the above criteria, score the Helpfulness dimension of the following query and response without explanation:\n"
 )
 
+correctness_template = (
+"You are required to act as a professional scoring model. "
+"For the query (user question) and corresponding response (answer content), you must score from a **single dimension** only, without considering the performance in other dimensions."
+"A 0-4 point scoring system is adopted, with specific dimension definitions and scoring criteria as follows:\n"
+"Dimension: Correctness\n"
+"Point 0: The response is completely incorrect. All information provided is wrong, false or hallucinated. If the prompt asks the assistant to do a task, the task is not at all attempted, or the wrong task was attempted in the response. The response is completely irrelevant to the prompt.\n"
+"Point 1: The response has some correct elements but is mostly wrong or incomplete. The response may contain multiple instances of hallucinations, false information, misleading information, or irrelevant information. If the prompt asks the assistant to do a task, the task was attempted with a small amount of success.\n"
+"Point 2: The response contains a mix of correct and incorrect information. The response may miss some details, contain misleading information, or minor hallucinations, but is more or less aligned with what the prompt asks for. If the prompt asks the assistant to perform a task, the task is attempted with moderate success but still has clear room for improvement.\n"  
+"Point 3: The response is mostly accurate and correct with a small amount of missing information. It contains no misleading information or hallucinations. If the prompt asks the assistant to perform a task, the task is mostly successfully attempted.\n"
+"Point 4: The response is completely correct and accurate to what is requested by the prompt with no necessary details missing and without false, misleading, or hallucinated information. If the prompt asks the assistant to do a task, the task is completely done and addressed in the response.\n"
+"Based on the above criteria, score the Correctness dimension of the following query and response without explanation:\n"
+)
+
+coherence_template = (
+"You are required to act as a professional scoring model. "
+"For the query (user question) and corresponding response (answer content), you must score from a **single dimension** only, without considering the performance in other dimensions."
+"A 0-4 point scoring system is adopted, with specific dimension definitions and scoring criteria as follows:\n"
+"Dimension: Coherence\n"
+"Point 0: The response is completely incomprehensible and no clear meaning or sensible message can be discerned from it.\n"
+"Point 1: The response is mostly hard to follow, with inconsistencies, contradictions, confusing logic flow, or unclear language used throughout, but there are some coherent/clear parts.\n"
+"Point 2: The response is a little unclear. There are some inconsistencies or contradictions, run on sentences, confusing statements, or hard to follow sections of the response.\n"  
+"Point 3: The response is mostly clear and coherent, but there may be one or two places where the wording is confusing or the flow of the response is a little hard to follow. Over all, the response can mostly be followed with a little room for improvement.\n"
+"Point 4: The response isperfectly clear and self-consistent throughout. There are no contradictory assertions or statements, the writing flows logically and following the train of thought/story is not challenging.\n"
+"Based on the above criteria, score the Coherence dimension of the following query and response without explanation:\n"
+)
+
 user_content = (
 "Query: {query}\n"
 "response:{response}\n"
@@ -67,20 +93,33 @@ def process_and_evaluate(
     generator_model_name,
     batch_size=8,
     num_beams=5,
-    output_file=f"./predictions/pre/responses_{date_string}"
+    output_file=f"./predictions/pre/responses_{date_string}",
+    add_principle = True,
+    principle = None
 ):
     dataset = load_dataset("json", data_files="../Mydatasets/HelpSteer2/validation.jsonl")['train']
     dataset = dataset.select([i for i in range(0, len(dataset), 2)])
     print(f"加载数据集完成，共 {len(dataset)} 个样本")
     tokenizer = AutoTokenizer.from_pretrained(generator_model_name, padding_side='left')
-    chat_prompts = [
-        tokenizer.apply_chat_template(
-            [{'role':'system', 'content': "You are a helpful assistant.\n"}, {"role": "user", "content": q}],
-            tokenize=False,
-            add_generation_prompt=True
-        )
-        for q in dataset["prompt"]
-    ]
+    if not add_principle:
+        chat_prompts = [
+            tokenizer.apply_chat_template(
+                [{'role':'system', 'content': "Your task is to generate responses."}, {"role": "user", "content": q}],
+                tokenize=False,
+                add_generation_prompt=True
+            )
+            for q in dataset["prompt"]
+        ]
+    else:
+        chat_prompts = [
+            tokenizer.apply_chat_template(
+                [{'role':'system', 'content': f"Your task is to generate responses by considering the following principles: {principle}"}, {"role": "user", "content": q}],
+                tokenize=False,
+                add_generation_prompt=True
+            )
+            for q in dataset["prompt"]
+        ]
+        
 
     print("开始生成回答...")
     sampling_params = SamplingParams(
@@ -117,7 +156,7 @@ def process_and_evaluate(
 
 def evaluate(file_path, 
              model_name = "../models/Qwen2.5-72B-Instruct-AWQ",
-             preference="helpfulness",
+             principle="helpfulness",
              batch_size=16,
              output_file="./predictions/pre/scores.json",
              num_beams=10):
@@ -134,12 +173,12 @@ def evaluate(file_path,
             eval_responses.append(resp)
             response_indices.append(idx)
 
-    if preference == "helpfulness":
+    if principle == "helpful":
         system_prompt = helpdfulness_template
-    elif preference == "correctness":
-        system_prompt = ""
-    elif preference == "coherence":
-        system_prompt = ""
+    elif principle == "correct":
+        system_prompt = correctness_template
+    elif principle == "coherent":
+        system_prompt = coherence_template
     else:
         raise ValueError("Invalid Prefence")
     
@@ -175,15 +214,31 @@ def evaluate(file_path,
     return all_responses
 
 if __name__ == "__main__":
-    response_file=f"./predictions/pre/responses_{date_string}"
-    # process_and_evaluate(
-    #     generator_model_name="../models/Qwen2.5-3B-Instruct",
-    #     model_name="/NAS/yjt/models/Skywork-Reward-V2-Llama-3.1-8B",
-    #     batch_size=16,
-    #     num_beams=10,
-    #     output_file=response_file
-    # )
-    torch.cuda.empty_cache()
-    results = evaluate(file_path="/NAS/yjt/Abstract_Thought/predictions/pre/helpfulness/responses_2025-09-04 17:41:39.json", 
-                       preference="helpfulness")
+    
+    import argparse
+    parser = argparse.ArgumentParser(description="Pre Exp") 
+    parser.add_argument("--generate", action="store_true")
+    parser.add_argument("--eval", action="store_true")
+    parser.add_argument("--add_principle", action="store_true")
+    parser.add_argument("--principle", type=str, default=None)
+    args = parser.parse_args()
+    if not args.principle:
+        response_file=f"./predictions/pre/responses.json"
+    else:
+        os.makedirs(f"./predictions/pre/{args.principle}",exist_ok=True)
+        response_file=f"./predictions/pre/{args.principle}/responses.json"
+        
+    if args.generate:
+        process_and_evaluate(
+            generator_model_name="../models/Qwen2.5-3B-Instruct",
+            batch_size=16,
+            num_beams=10,
+            output_file=response_file,
+            add_principle=args.add_principle,
+            principle=args.principle
+        )
+    if args.eval:
+        results = evaluate(file_path=response_file, 
+            principle=args.principle, 
+            output_file=f"./predictions/pre/{args.principle}/scores.json")
     
