@@ -222,13 +222,12 @@ if __name__ == "__main__":
     parser.add_argument("--add_principle", action="store_true")
     parser.add_argument("--principle", type=str, default=None)
     args = parser.parse_args()
-    if not args.principle:
-        response_file=f"./predictions/pre/responses.json"
-    else:
-        os.makedirs(f"./predictions/pre/{args.principle}",exist_ok=True)
-        response_file=f"./predictions/pre/{args.principle}/responses.json"
-        
     if args.generate:
+        if not args.principle:
+            response_file=f"./predictions/pre/responses.json"
+        else:
+            os.makedirs(f"./predictions/pre/{args.principle}",exist_ok=True)
+            response_file=f"./predictions/pre/{args.principle}/responses.json"
         process_and_evaluate(
             generator_model_name="../models/Qwen2.5-3B-Instruct",
             batch_size=16,
@@ -238,7 +237,20 @@ if __name__ == "__main__":
             principle=args.principle
         )
     if args.eval:
-        results = evaluate(file_path=response_file, 
-            principle=args.principle, 
-            output_file=f"./predictions/pre/{args.principle}/scores.json")
+        if not args.principle:
+            response_file=f"./predictions/pre/responses.json"
+            evaluate(file_path=response_file, 
+                principle="helpful", 
+                output_file=f"./predictions/pre/{args.principle}_scores.json")
+            evaluate(file_path=response_file, 
+                principle="correct", 
+                output_file=f"./predictions/pre/{args.principle}_scores.json")
+            evaluate(file_path=response_file, 
+                principle="coherent", 
+                output_file=f"./predictions/pre/{args.principle}_scores.json")
+        else:
+            response_file=f"./predictions/pre/{args.principle}/responses.json"
+            evaluate(file_path=response_file, 
+                principle=args.principle, 
+                output_file=f"./predictions/pre/{args.principle}/scores.json")
     
