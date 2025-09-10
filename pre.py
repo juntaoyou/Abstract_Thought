@@ -48,7 +48,7 @@ coherence_template = (
 "Point 1: The response is mostly hard to follow, with inconsistencies, contradictions, confusing logic flow, or unclear language used throughout, but there are some coherent/clear parts.\n"
 "Point 2: The response is a little unclear. There are some inconsistencies or contradictions, run on sentences, confusing statements, or hard to follow sections of the response.\n"  
 "Point 3: The response is mostly clear and coherent, but there may be one or two places where the wording is confusing or the flow of the response is a little hard to follow. Over all, the response can mostly be followed with a little room for improvement.\n"
-"Point 4: The response isperfectly clear and self-consistent throughout. There are no contradictory assertions or statements, the writing flows logically and following the train of thought/story is not challenging.\n"
+"Point 4: The response is perfectly clear and self-consistent throughout. There are no contradictory assertions or statements, the writing flows logically and following the train of thought/story is not challenging.\n"
 "Based on the above criteria, score the Coherence dimension of the following query and response without explanation:\n"
 )
 
@@ -119,7 +119,7 @@ def process_and_evaluate(
             )
             for q in dataset["prompt"]
         ]
-        
+    print(chat_prompts[0])
 
     print("开始生成回答...")
     sampling_params = SamplingParams(
