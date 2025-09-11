@@ -1,5 +1,5 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from types import MethodType
@@ -90,3 +90,37 @@ for key, items in instructions.items():
     # num_layers, intermediate_size = over_zero.size()
     output = dict(n = n, over_zero=over_zero.to('cpu'))
     torch.save(output, f'data/activation.train.{model_suffix}.{key}.B')
+
+for key, items in doubled_instructions.items():
+    for subkey in items.keys():
+        over_zero = torch.zeros(num_layers, intermediate_size, dtype=torch.int32).to('cuda')
+        data_A = process(data, doubled_instructions[key][subkey])
+        inputs = tokenizer(data_A, return_tensors="pt", padding=True, truncation=True).to(model.device)
+
+        for i in range(0, len(inputs), batch_size):
+            end_idx = min(len(inputs), i + batch_size)
+            batch_queries = inputs["input_ids"][i : end_idx]
+            with torch.no_grad():  
+                model.generate(batch_queries, max_new_tokens=1)
+                
+        n = len(inputs["input_ids"][0]) * len(inputs)
+        output = dict(n = n, over_zero=over_zero.to('cpu'))
+        torch.save(output, f'data/activation.train.{model_suffix}.{key}.{subkey}')
+            
+    
+for key, items in tripled_instructions.items():
+    for subkey in items.keys():
+        over_zero = torch.zeros(num_layers, intermediate_size, dtype=torch.int32).to('cuda')
+        data_A = process(data, tripled_instructions[key][subkey])
+        inputs = tokenizer(data_A, return_tensors="pt", padding=True, truncation=True).to(model.device)
+
+        for i in range(0, len(inputs), batch_size):
+            end_idx = min(len(inputs), i + batch_size)
+            batch_queries = inputs["input_ids"][i : end_idx]
+            with torch.no_grad():  
+                model.generate(batch_queries, max_new_tokens=1)
+                
+        n = len(inputs["input_ids"][0]) * len(inputs)
+        output = dict(n = n, over_zero=over_zero.to('cpu'))
+        torch.save(output, f'data/activation.train.{model_suffix}.{key}.{subkey}')
+    

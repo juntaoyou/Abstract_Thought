@@ -1,23 +1,7 @@
 import torch
 import torch.nn.functional as F
-
-n, conditioned_probs, activation_probs = [], [], []
-model_suffix = "Qwen3-8B"
-base_data = torch.load(f'data/activation.train.{model_suffix}.base')
-base_probs = torch.tensor(base_data['over_zero']) / torch.tensor(base_data["n"])
-
-for preference in ['Expertise','Informativeness','Style']:
-    for index in ['A','B']:
-        data = torch.load(f'data/activation.train.{model_suffix}.{preference}.{index}')
-        n.append(data['n'])
-        activation_probs.append(data['over_zero'] / data['n'])
-        conditioned_probs.append(data['over_zero'] / base_probs /  data['n'])
-        
-conditioned_probs = torch.stack(conditioned_probs, dim=-1)
-activation_probs = torch.stack(activation_probs, dim=-1)
-num_layers, intermediate_size, preference_num = activation_probs.size()
-
-def activation():
+keys =  ['A','B']
+def activation(activation_probs, conditioned_probs, num_layers, save_type="single"):
     top_rate = 0.01
     filter_rate = 0.95
     activation_bar_ratio = 0.95
@@ -65,7 +49,53 @@ def activation():
         for l, h in enumerate(layer_index):
             layer_index[l] = torch.tensor(h).long()
         final_indice.append(layer_index)
-    torch.save(final_indice, f"activation_mask/{model_suffix}")  
-    print(final_indice)
+    torch.save(final_indice, f"activation_mask/{model_suffix}.{save_type}")  
+    # print(final_indice)
+    
+n, conditioned_probs, activation_probs = [], [], []
+model_suffix = "Qwen3-8B"
+base_data = torch.load(f'data/activation.train.{model_suffix}.base')
+base_probs = torch.tensor(base_data['over_zero']) / torch.tensor(base_data["n"])
 
-activation()
+for preference in ['Expertise','Informativeness','Style']:
+    for index in keys:
+        data = torch.load(f'data/activation.train.{model_suffix}.{preference}.{index}')
+        n.append(data['n'])
+        activation_probs.append(data['over_zero'] / data['n'])
+        conditioned_probs.append(data['over_zero'] / base_probs /  data['n'])
+        
+conditioned_probs = torch.stack(conditioned_probs, dim=-1)
+activation_probs = torch.stack(activation_probs, dim=-1)
+num_layers, _ , _ = activation_probs.shape
+activation(activation_probs, conditioned_probs, num_layers, save_type="single")
+
+n, conditioned_probs, activation_probs = [], [], []
+for preference in ['Expertise_Informativeness','Informativeness_Style','Expertise_Style']:
+    for index1 in keys:
+        for index2 in keys:
+            index = index1 + index2
+            data = torch.load(f'data/activation.train.{model_suffix}.{preference}.{index}')
+            n.append(data['n'])
+            activation_probs.append(data['over_zero'] / data['n'])
+            conditioned_probs.append(data['over_zero'] / base_probs /  data['n'])
+        
+conditioned_probs = torch.stack(conditioned_probs, dim=-1)
+activation_probs = torch.stack(activation_probs, dim=-1)
+num_layers, _ , _ = activation_probs.shape
+activation(activation_probs, conditioned_probs, num_layers, save_type="double")
+
+n, conditioned_probs, activation_probs = [], [], []
+preference = "Expertise_Informativeness_Style"
+for index1 in keys:
+    for index2 in keys:
+        for index3 in keys:
+            index = index1 + index2 + index3
+            data = torch.load(f'data/activation.train.{model_suffix}.{preference}.{index}')
+            n.append(data['n'])
+            activation_probs.append(data['over_zero'] / data['n'])
+            conditioned_probs.append(data['over_zero'] / base_probs /  data['n'])
+        
+conditioned_probs = torch.stack(conditioned_probs, dim=-1)
+activation_probs = torch.stack(activation_probs, dim=-1)
+num_layers, _ , _ = activation_probs.shape
+activation(activation_probs, conditioned_probs, num_layers, save_type="triple")
