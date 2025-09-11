@@ -1,5 +1,7 @@
 import torch
 import torch.nn.functional as F
+import numpy as np
+# torch.set_printoptions(threshold=np.inf)
 keys =  ['A','B']
 def activation(activation_probs, conditioned_probs, num_layers, save_type="single"):
     top_rate = 0.01
@@ -7,10 +9,10 @@ def activation(activation_probs, conditioned_probs, num_layers, save_type="singl
     activation_bar_ratio = 0.95
     normed_conditioned_probs = conditioned_probs / conditioned_probs.sum(dim=-1, keepdim=True)
     normed_conditioned_probs[torch.isnan(normed_conditioned_probs)] = 0
-    
+    # print("Con:", normed_conditioned_probs)
     normed_activation_probs = activation_probs / activation_probs.sum(dim=-1, keepdim=True)
     normed_activation_probs[torch.isnan(normed_activation_probs)] = 0
-    
+    # print("Act:",normed_activation_probs)
     log_probs = torch.where(normed_conditioned_probs > 0, normed_conditioned_probs.log(), 0)
     entropy = -torch.sum(normed_activation_probs * log_probs, dim=-1)
     largest = False
@@ -32,6 +34,7 @@ def activation(activation_probs, conditioned_probs, num_layers, save_type="singl
     row_index = index // entropy.size(1)
     col_index = index % entropy.size(1)
     selected_probs = activation_probs[row_index, col_index] 
+    # print(selected_probs.size())
     print(selected_probs.size(0), torch.bincount(selected_probs.argmax(dim=-1)))
     selected_probs = selected_probs.transpose(0, 1)
     activation_bar = flattened_probs.kthvalue(round(len(flattened_probs) * activation_bar_ratio)).values.item()
@@ -56,7 +59,7 @@ n, conditioned_probs, activation_probs = [], [], []
 model_suffix = "Qwen3-8B"
 base_data = torch.load(f'data/activation.train.{model_suffix}.base')
 base_probs = torch.tensor(base_data['over_zero']) / torch.tensor(base_data["n"])
-
+print("Base:", base_probs)
 for preference in ['Expertise','Informativeness','Style']:
     for index in keys:
         data = torch.load(f'data/activation.train.{model_suffix}.{preference}.{index}')

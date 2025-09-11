@@ -19,7 +19,7 @@ max_length = model.config.max_length
 num_layers = model.config.num_hidden_layers
 intermediate_size = model.config.intermediate_size
 
-over_zero = torch.zeros(num_layers, intermediate_size, dtype=torch.int32).to('cuda')
+
 
 def factory(idx):
     def qwen_forward(self, x):
@@ -39,7 +39,7 @@ for i, layer_name in enumerate(target_layers):
         module = getattr(module, name)
     module.forward = MethodType(factory(i), module)
 data = load_from_disk("/NAS/yjt/Mydatasets/PSoups_queries")['query']
-
+# print(len(data))
 def process(queries, instruction):
     new_queries = []
     for q in queries:
@@ -48,14 +48,16 @@ def process(queries, instruction):
     return new_queries   
 
 inputs = tokenizer(data, return_tensors="pt", padding=True, truncation=True).to(model.device)
-
+print(len(inputs["input_ids"]), len(inputs["input_ids"][0]))
+over_zero = torch.zeros(num_layers, intermediate_size, dtype=torch.int32).to('cuda')
 for i in range(0, len(inputs), batch_size):
     end_idx = min(len(inputs), i + batch_size)
     batch_queries = inputs["input_ids"][i : end_idx]
     with torch.no_grad():  
         model.generate(batch_queries, max_new_tokens=1)
+        
 model_suffix = model_name.replace("../models/", "")
-n = len(inputs["input_ids"][0]) * len(inputs)
+n = len(inputs["input_ids"][0]) * len(inputs["input_ids"])
 # num_layers, intermediate_size = over_zero.size()
 output = dict(n = n, over_zero=over_zero.to('cpu'))
 torch.save(output, f'data/activation.train.{model_suffix}.base')
@@ -71,7 +73,7 @@ for key, items in instructions.items():
         with torch.no_grad():  
             model.generate(batch_queries, max_new_tokens=1)
             
-    n = len(inputs["input_ids"][0]) * len(inputs)
+    n = len(inputs["input_ids"][0]) * len(inputs["input_ids"])
     # num_layers, intermediate_size = over_zero.size()
     output = dict(n = n, over_zero=over_zero.to('cpu'))
     torch.save(output, f'data/activation.train.{model_suffix}.{key}.A')
@@ -86,7 +88,7 @@ for key, items in instructions.items():
         with torch.no_grad():  
             model.generate(batch_queries, max_new_tokens=1)
             
-    n = len(inputs["input_ids"][0]) * len(inputs)
+    n = len(inputs["input_ids"][0]) * len(inputs["input_ids"])
     # num_layers, intermediate_size = over_zero.size()
     output = dict(n = n, over_zero=over_zero.to('cpu'))
     torch.save(output, f'data/activation.train.{model_suffix}.{key}.B')
@@ -103,7 +105,7 @@ for key, items in doubled_instructions.items():
             with torch.no_grad():  
                 model.generate(batch_queries, max_new_tokens=1)
                 
-        n = len(inputs["input_ids"][0]) * len(inputs)
+        n = len(inputs["input_ids"][0]) * len(inputs["input_ids"])
         output = dict(n = n, over_zero=over_zero.to('cpu'))
         torch.save(output, f'data/activation.train.{model_suffix}.{key}.{subkey}')
             
@@ -120,7 +122,7 @@ for key, items in tripled_instructions.items():
             with torch.no_grad():  
                 model.generate(batch_queries, max_new_tokens=1)
                 
-        n = len(inputs["input_ids"][0]) * len(inputs)
+        n = len(inputs["input_ids"][0]) * len(inputs["input_ids"])
         output = dict(n = n, over_zero=over_zero.to('cpu'))
         torch.save(output, f'data/activation.train.{model_suffix}.{key}.{subkey}')
     
