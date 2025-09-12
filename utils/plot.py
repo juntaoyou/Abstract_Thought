@@ -1,7 +1,20 @@
 import matplotlib.pyplot as plt
 import torch
+import matplotlib
+import numpy as np
+plt.rcParams['figure.facecolor'] = 'white'
+plt.rcParams['axes.facecolor'] = 'white'
+plt.rcParams['patch.facecolor'] = 'white'
+plt.rcParams['axes.edgecolor'] = 'black'
+plt.rcParams['text.color'] = 'black'
+plt.rcParams['axes.labelcolor'] = 'black'
+plt.rcParams['xtick.color'] = 'black'
+plt.rcParams['ytick.color'] = 'black'
+matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.rcParams['ps.fonttype'] = 42
+
 def plot0(file_paths, title=""):
-    fig, ax = plt.subplots(figsize=(16, 10))
+    fig, ax = plt.subplots(figsize=(20, 16))
     for file_path in file_paths:
         data = torch.load(file_path)
         activation_probs = data['over_zero'] / data['n']
@@ -17,10 +30,11 @@ def plot0(file_paths, title=""):
             index = ""
         
         ax.plot(list(range(len(stats))), stats, label=f"{preference}_{index}" if index != "" else "Only Context", linewidth=3)
-        ax.set_ylabel("Count of activated neurons", fontsize=30)
+        ax.set_ylabel("Ratio of activated neurons", fontsize=30)
         ax.set_xlabel("Layer num", fontsize=30)
         ax.legend(fontsize=25)
-    ax.set_title(title, fontsize=30)
+    # ax.set_title(title, fontsize=30)
+    ax.tick_params(axis='both', labelsize=25, pad=15)
     plt.savefig(f"stats.{title}.pdf")
 
 def load(file_path):
@@ -69,10 +83,11 @@ def plot2(base_file_path, file_paths, title = "Expertise_A_Informativeness_A", l
     y2 = positions3.sum(dim = -1).tolist()
     y3 = positions1.sum(dim = -1).tolist()
     y4 = positions2.sum(dim = -1).tolist()
-    x1 = (torch.logical_and(positions12, positions3) == 1).sum()
-    x2 = (torch.logical_or(positions12, positions3) == 1).sum()
-    p = x1 / x2
-    p = float(p.cpu().numpy())
+    # map23 = torch.logical_or(positions1, positions2)
+    intersection = torch.logical_and(positions12, positions3).sum().item()
+    union = positions12.sum().item() + positions3.sum().item() - intersection  # 1的并集数：(4)+(4)-3=5
+
+    p = intersection / union
     
     fig, ax = plt.subplots(figsize=(20,14))
     ax.spines['right'].set_visible(False)
@@ -82,10 +97,10 @@ def plot2(base_file_path, file_paths, title = "Expertise_A_Informativeness_A", l
     ax.plot(list(range(num_layers)), y1, linewidth=4, label=labels[0])
     ax.plot(list(range(num_layers)), y2, linewidth=4, label=labels[1])
     ax.set_xlabel("Layer Num", fontsize=30)
-    ax.set_ylabel("Specific Neuron Num", fontsize=30)
-    ax.text(0.05, 2350, s = f"Overlapping Ratio: {round(p,3)}", fontsize=25, color='black') # 添加文本
+    ax.set_ylabel("Num of Preference-Specific Neurons", fontsize=30)
+    ax.text(15, 2350, s = f"Overlapping Ratio: {round(p,3)}", fontsize=25, color='black') # 添加文本
     ax.legend(fontsize=25)
-    ax.tick_params(axis='both', labelsize=25)
+    ax.tick_params(axis='both', labelsize=25, pad=15)
 
     plt.savefig(f"{title}.pdf")
     
@@ -110,10 +125,10 @@ def plot3(base_file_path, file_paths, title = "Expertise_A_Informativeness_A", l
     y3 = positions3.sum(dim = -1).tolist()
     y4 = positions123.sum(dim = -1).tolist()
     y5 = positions4.sum(dim = -1).tolist()
-    x1 = (torch.logical_and(positions123, positions4) == 1).sum()
-    x2 = (torch.logical_or(positions123, positions4) == 1).sum()
-    p = x1 / x2
-    p = float(p.cpu().numpy())
+    intersection = (torch.logical_and(positions123, positions4) == 1).sum().item()
+    union = positions123.sum().item() + positions4.sum().item() - intersection
+    p = intersection / union
+    # p = float(p.cpu().numpy())
     
     fig, ax = plt.subplots(figsize=(20,14))
     ax.spines['right'].set_visible(False)
@@ -124,9 +139,110 @@ def plot3(base_file_path, file_paths, title = "Expertise_A_Informativeness_A", l
     ax.plot(list(range(num_layers)), y4, linewidth=4, label=labels[3])
     ax.plot(list(range(num_layers)), y5, linewidth=4, label=labels[4])
     ax.set_xlabel("Layer Num", fontsize=30)
-    ax.set_ylabel("Specific Neuron Num", fontsize=30)
+    ax.set_ylabel("Num of Preference-Specific Neurons", fontsize=30)
     ax.text(15, 2500, s = f"Overlapping Ratio: {round(p,3)}", fontsize=25, color='black') # 添加文本
     ax.legend(fontsize=25, loc='lower right')
-    ax.tick_params(axis='both', labelsize=25)
+    ax.tick_params(axis='both', labelsize=25, pad=15)
 
     plt.savefig(f"{title}.pdf")
+    
+def calc(file_paths, base_file_path):
+    stats = load(base_file_path)
+    intersection, union = torch.ones_like(stats), torch.zeros_like(stats)
+    for i, path in enumerate(file_paths):
+        stats_cur = load(path)
+        # stats_cur = data['over_zero'] / data['n']
+        positions_cur = (stats_cur > stats).float()
+        intersection = torch.logical_and(intersection, positions_cur)
+        union = torch.logical_or(union, positions_cur)
+    print(intersection.sum().item() / union.sum().item())
+
+def plot4():
+    table = torch.load("/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base")
+    table2 = torch.load("/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.A")
+    table3 = torch.load("/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.A")
+    table4 = torch.load("/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise_Informativeness.AA")
+    data = table['over_zero'] / table['n']
+    data2 = table2['over_zero'] / table2['n']
+    data3 = table3['over_zero'] / table3['n']
+    data4 = table4['over_zero'] / table4['n']
+    # data2 = data2 - data
+    # data3 = data3 - data
+    # data4 = data4 - data
+    import numpy as np
+    num_layers, inter_size = data.shape
+    x, y = list(range(num_layers)), list(range(inter_size))
+    topk_ratios = [0.01] + list(map(lambda x: x * 0.05, list(range(1, 11))))
+    res = []
+    for topk_ratio in topk_ratios:
+        topk_num = int(topk_ratio * inter_size)
+        values2, indices2 = torch.topk(data2, topk_num, dim=1, largest=True)
+        map2 = torch.zeros_like(data)
+        for i in range(num_layers):
+            map2[i][indices2[i]] = 1
+
+        values3, indices3 = torch.topk(data3, topk_num, dim=1, largest=True)   
+        map3 = torch.zeros_like(data)
+        for i in range(num_layers):
+            map3[i][indices3[i]] = 1
+
+        values4, indices4 = torch.topk(data4, topk_num, dim=1, largest=True)
+
+        map4 = torch.zeros_like(data)
+        for i in range(num_layers):
+            map4[i][indices4[i]] = 1
+
+
+        map23 = torch.logical_or(map2, map3)
+
+        intersection = torch.logical_and(map23, map4).sum().item()
+        union = torch.logical_or(map23, map4).sum().item() 
+
+        res.append(round(intersection / union, 3))
+    plt.figure(figsize=(14,10))
+    plt.plot(topk_ratios, res, linewidth=3, color='blue', label="Probability with context and preference")
+    plt.xlabel("Ratio of Top Value", fontsize=30, fontweight='bold')
+    plt.ylabel("IoU", fontsize=30, fontweight='bold')
+    plt.tick_params(axis='both', labelsize=25, pad=15)
+    plt.grid(True)
+    plt.savefig("ratios2.pdf")
+    
+def plot5():
+    table = torch.load("/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base")
+    table2 = torch.load("/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.A")
+    table3 = torch.load("/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.A")
+    table4 = torch.load("/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise_Informativeness.AA")
+    data = table['over_zero'] / table['n']
+    data2 = table2['over_zero'] / table2['n']
+    data3 = table3['over_zero'] / table3['n']
+    data4 = table4['over_zero'] / table4['n']
+    data2 = data2 - data
+    data3 = data3 - data
+    data4 = data4 - data
+    # positions = data3 > data
+    num_layers, inter_size = data.shape
+    x, y = list(range(num_layers)), list(range(inter_size))
+    xv, yv = np.meshgrid(x, y)
+    fig, ax = plt.subplots(figsize=(10,10),subplot_kw={"projection": "3d"})
+    surf = ax.plot_surface(xv, yv, data3.numpy().transpose(), cmap=cm.coolwarm, 
+                        linewidth=0, antialiased=True)
+    # ax.plot_surface(xv, yv, np.zeros_like(xv), 
+    #                        linewidth=0, antialiased=True)
+    # fig.colorbar(surf, shrink=0.5, aspect=5)
+
+    # 设置坐标轴标签
+    ax.set_xlabel('Layer Num', fontsize=20,labelpad=25)
+    ax.set_ylabel('Hidden Size', fontsize=20,labelpad=25)
+    ax.set_zlabel('Probability Difference', fontsize=20, labelpad=25)
+    ax.set_zlim(-0.0008, 0.0008)
+    ax.tick_params(axis='both', labelsize=10)
+    ax.ticklabel_format(style='scientific', axis='z')
+    ax.grid(visible=False)
+    fig.colorbar(surf, shrink=0.3, location='left', pad=0.001)
+    fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
+    # 设置标题
+    # ax.set_title(f'{a}×{b}数据的三维可视化')
+
+    # 显示图形
+    plt.show()
+    plt.savefig("test3.pdf")
