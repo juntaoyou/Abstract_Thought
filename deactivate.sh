@@ -1,0 +1,1 @@
+python deactivate.py --activation_mask
