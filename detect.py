@@ -33,12 +33,15 @@ def factory(idx):
 target_layers = [
     f"model.layers.{i}.mlp"  for i in range(num_layers)
 ]
+def normal_forward(self, x):
+    return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 for i, layer_name in enumerate(target_layers):
     module = model
     for name in layer_name.split('.'):
         module = getattr(module, name)
     module.forward = MethodType(factory(i), module)
+    
 data = load_from_disk("/NAS/yjt/Mydatasets/PSoups_queries")['query']
 total_len = len(data)
 print(total_len)
@@ -147,4 +150,9 @@ for key, items in tripled_instructions.items():
         torch.save(output, f'data/activation.train.{model_suffix}.{key}.{subkey}')
         activated_output = dict(n = n, activated_value=activated_value.to('cpu'))
         torch.save(activated_output, f'data/activation.train.value.{model_suffix}.{key}.{subkey}')
-    
+
+for i, layer_name in enumerate(target_layers):
+    module = model
+    for name in layer_name.split('.'):
+        module = getattr(module, name)
+    module.forward = MethodType(normal_forward, module)

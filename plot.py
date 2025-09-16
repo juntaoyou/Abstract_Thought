@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import torch
-from utils.plot import plot0, plot1, plot2, plot3, load, calc, plot7, plot8, plot1_quantile, plot2_quantile, plot8_quantile
+from utils.plot import plot0, plot1, plot2, plot3,plot4, load, calc, plot7, plot8, plot1_quantile, plot2_quantile, plot8_quantile, plot5
 from matplotlib import cm
 import matplotlib
 import numpy as np
@@ -15,7 +15,7 @@ plt.rcParams['ytick.color'] = 'black'
 matplotlib.rcParams['pdf.fonttype'] = 42
 matplotlib.rcParams['ps.fonttype'] = 42
 
-
+# plot5()
 
 file_paths = [
     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base",
@@ -30,11 +30,47 @@ file_paths = [
 
 base_file_path = "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base"
 data = torch.load(base_file_path)
-plot8_quantile(base_file_path, file_paths, q = 0.9)
-plot8_quantile(base_file_path, file_paths, q = 0.95)
-plot8_quantile(base_file_path, file_paths, q = 0.25)
-plot8_quantile(base_file_path, file_paths, q = 0.5)
-plot8_quantile(base_file_path, file_paths, q = 0.75)
+
+stats = data['over_zero'] / data['n']
+# p, q = 0.9, 0.9
+# num_layers, inter_size = stats.shape
+# total_num = num_layers * inter_size
+# x1 = torch.quantile(stats, p).item()
+# positions1 = (stats >= x1).float()
+# count = []
+# for path in file_paths:
+#     # file_path = "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.A"
+#     data = torch.load(path)
+#     stats1 = data['over_zero'] / data['n']
+#     x2 = torch.quantile(stats1, q).item()
+#     positions2 = (stats1 >= x2).float()
+#     intersection = torch.logical_and(positions1, positions2).float()
+#     target_neurons = positions2 - intersection
+#     count.append(target_neurons.sum(-1))
+# preference_set = ["Expertise", "Informativeness", "Style"]
+# keys_set = ['A', 'B']
+# plt.figure(figsize=(14,10))    
+# count = np.array(count)
+# for i in range(6):
+#     plt.plot(list(range(36)), count[i], label = f"{preference_set[i // 2]}_{keys_set[i % 2]}", linewidth=3)
+# plt.xlabel("Layer Num", fontsize=30)
+# plt.ylabel("Num of Preference-Specific neurons", fontsize=30)
+# plt.legend(fontsize=25)
+# plt.tick_params(axis='both', labelsize=20, pad=12)
+# plt.savefig("test2.pdf")
+
+
+
+
+
+# print(target_neurons.sum(-1))
+# plot4()
+
+# plot8_quantile(base_file_path, file_paths, q = 0.95)
+# plot8_quantile(base_file_path, file_paths, q = 0.8)
+# plot8_quantile(base_file_path, file_paths, q = 0.85)
+# plot8_quantile(base_file_path, file_paths, q = 0.7)
+# plot8_quantile(base_file_path, file_paths, q = 0.75)
 # plot1(base_file_path, file_paths, title="Ratio of Preference-related Neurons")
 # plot1_quantile(base_file_path, file_paths, title="Ratio of Preference-related Neurons", q=0.25)
 # plot1_quantile(base_file_path, file_paths, title="Ratio of Preference-related Neurons", q=0.5)
@@ -150,7 +186,7 @@ labels = ["Expertise_B or Informativeness_B",
 
 
 base_file_path = "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base"
-# preference_set = ["Expertise", "Informativeness", "Style"]
+preference_set = ["Expertise", "Informativeness", "Style"]
 # keys_set = ['A', 'B']
 # for i, p1 in enumerate(preference_set):
 #     for j, p2 in enumerate(preference_set):
@@ -166,6 +202,24 @@ base_file_path = "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base"
 #                         f"{p1}_{k1}",
 #                         f"{p2}_{k2}"]
 #                 plot2(base_file_path, file_paths, title=f"{p1}_{k1}_{p2}_{k2}", labels=labels, tag='over_zero')
+                
+                
+# preference_set = ["Expertise", "Informativeness", "Style"]
+# keys_set = ['A', 'B']
+# for k1 in keys_set:
+#     for k2 in keys_set:
+#         for k3 in keys_set:
+#             file_paths = [f"/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.{k1}",
+#                         f"/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.{k2}",
+#                         f"/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Style.{k2}",
+#                         f"/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise_Informativeness_Style.{k1}{k2}{k3}"]
+
+#             labels = [f"Expertise_{k1}",
+#                     f"Informativeness_{k2}",
+#                     f"Style_{k3}",
+#                     f"Expertise_{k1} or Informativeness_{k2} or Style_{k3}",
+#                     f"Expertise_Informativeness_Style_{k1}{k2}{k3}"]
+#             plot3(base_file_path, file_paths, title=f"Expertise_{k1}_Informativeness_{k2}_Style_{k3}", labels=labels, tag='over_zero')
 # qs = [0.1, 0.2, 0.3]
 # for q in qs:
 #     for i, p1 in enumerate(preference_set):
@@ -219,3 +273,4 @@ labels = ["Expertise_A",
 
 # plot3(base_file_path, file_paths, title="Expertise_A_Informativeness_A_Style_A", labels=labels)
 
+plot5()

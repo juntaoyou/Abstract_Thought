@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = '2'
 from types import MethodType
 from datasets import load_from_disk
 import torch
@@ -10,17 +11,17 @@ from instructions import instructions, doubled_instructions, tripled_instruction
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-m", "--model", type=str, default="../models/Qwen3-0.8B")
+parser.add_argument("-m", "--model", type=str, default="../models/Qwen3-8B")
 parser.add_argument("-a", "--activation_mask", type=str, default="")
 args = parser.parse_args()
 
 model = AutoModelForCausalLM.from_pretrained(
-    args.model_name, 
+    args.model, 
     torch_dtype=torch.bfloat16,
     device_map="auto"
 )
 
-tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+tokenizer = AutoTokenizer.from_pretrained(args.model, padding_side='left')
 
 if args.activation_mask:
     activation_masks = torch.load(args.activation_mask)
@@ -32,7 +33,7 @@ else:
 max_length = model.config.max_length
 num_layers = model.config.num_hidden_layers
 intermediate_size = model.config.intermediate_size
-batch_size = 4
+batch_size = 8
 
 preference_set = ["Expertise", "Informativeness", "Style"]
 keys_set = ['A', 'B']
@@ -43,6 +44,15 @@ target_layers = [
     f"model.layers.{i}.mlp"  for i in range(num_layers)
 ]
 
+def normal_forward(self, x):
+    return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+
+for i, layer_name in enumerate(target_layers):
+    module = model
+    for name in layer_name.split('.'):
+        module = getattr(module, name)
+    module.forward = MethodType(normal_forward, module)
+
 def process(queries, instruction):
     new_queries = []
     for q in queries:
@@ -50,9 +60,14 @@ def process(queries, instruction):
     
     return new_queries   
 
-for activation_mask in activation_masks:
+
+
+data = load_from_disk("/NAS/yjt/Mydatasets/PSoups_queries")['query']
+total_len = len(data)
+for idx, activation_mask in enumerate(activation_masks):
     if activation_mask:
         def factory(mask):
+            mask = mask.to(model.device)
             def qwen_forward(self, x):
                 activation = self.act_fn(self.gate_proj(x))
                 activation.index_fill_(2, mask, 0)
@@ -66,24 +81,36 @@ for activation_mask in activation_masks:
             for name in layer_name.split('.'):
                 module = getattr(module, name)
             module.forward = MethodType(factory(layer_mask), module) 
-    data = load_from_disk("/NAS/yjt/Mydatasets/PSoups_queries")['query']
-    total_len = len(data)
+            layer_mask = layer_mask.to(model.device)
     for p in preference_set:
         for k in keys_set:
             data_A = process(data, instructions[p][k])
-            inputs = tokenizer(data_A, return_tensors="pt", padding=True, truncation=True).to(model.device)
+            data_A = [f"Question: {q}\nAnswer:" for q in data_A]
             results = []
             for i in tqdm(range(0, total_len, batch_size)):
                 end_idx = min(total_len, i + batch_size)
-                batch_queries = inputs["input_ids"][i : end_idx]
+                batch_texts = data_A[i: end_idx]
+                inputs = tokenizer(batch_texts, return_tensors="pt", padding=True, truncation=True).to(model.device)
                 with torch.no_grad():  
-                    outputs = model.generate(batch_queries, 
-                                do_sample=False, 
-                                max_new_tokens=256)
+                    outputs = model.generate(
+                        inputs["input_ids"], 
+                        do_sample=True, 
+                        max_length=512,
+                        pad_token_id=tokenizer.pad_token_id,
+                        eos_token_id=tokenizer.eos_token_id
+                    )
                     
-                    text = tokenizer.batch_decode(outputs[:, len(inputs['input_ids'][0]):], skip_special_tokens=True)
-                ans = [{"Q": q, "A": t} for q, t in zip(data[i: end_idx], text)]
-                results.extend(ans)
-            output_file = f"{output_folder}/{p}_{k}.deactivate.{activation_mask_name}.json"
-            with open(output_file, 'w') as f:
+                for j, output in enumerate(outputs):
+                    full_text = tokenizer.decode(output, skip_special_tokens=True)
+                    answer = full_text.split("Answer:")[-1].strip()
+                    ans = {'Q': batch_texts[j], 'A': answer}
+                    results.append(ans)
+            output_file = f"{output_folder}/{p}_{k}.deactivate.{activation_mask_name}.{preference_set[idx // 2]}_{keys_set[idx % 2]}.json"
+            with open(output_file, 'w') as f: 
                 json.dump(results, f, ensure_ascii=False, indent=4)
+
+for i, layer_name in enumerate(target_layers):
+    module = model
+    for name in layer_name.split('.'):
+        module = getattr(module, name)
+    module.forward = MethodType(normal_forward, module)

@@ -2,12 +2,12 @@ import argparse
 import json
 import os
 from types import MethodType
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 # from vllm import LLM, SamplingParams
-from datasets import load_from_disk
+from datasets import load_from_disk, Dataset
 from instructions import instructions, doubled_instructions, tripled_instructions
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -42,29 +42,50 @@ max_length = model.config.max_length
 num_layers = model.config.num_hidden_layers
 intermediate_size = model.config.intermediate_size
 
+
+
 target_layers = [
     f"model.layers.{i}.mlp"  for i in range(num_layers)
 ]
 
 data = load_from_disk("/NAS/yjt/Mydatasets/PSoups_queries")['query']
 total_len = len(data)
-inputs = tokenizer(data, return_tensors="pt", padding=True, truncation=True).to(model.device)
+data_processed = [f"Question: {q}\nAnswer:" for q in data]
+
 # print(len(inputs))
 results = []
+def normal_forward(self, x):
+    return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+
+for i, layer_name in enumerate(target_layers):
+    module = model
+    for name in layer_name.split('.'):
+        module = getattr(module, name)
+    module.forward = MethodType(normal_forward, module)
+    
 for i in tqdm(range(0, total_len, batch_size)):
     end_idx = min(total_len, i + batch_size)
-    batch_queries = inputs["input_ids"][i : end_idx]
+    batch_texts = data_processed[i: end_idx]
+    inputs = tokenizer(batch_texts, return_tensors="pt", padding=True, truncation=True).to(model.device)
     with torch.no_grad():  
-        outputs = model.generate(batch_queries, 
-                       do_sample=False, 
-                       max_new_tokens=256)
-        
-        text = tokenizer.batch_decode(outputs[:, len(inputs['input_ids'][0]):], skip_special_tokens=True)
-    ans = [{"Q": q, "A": t} for q, t in zip(data[i: end_idx], text)]
-    results.extend(ans)
+        outputs = model.generate(
+            inputs["input_ids"],
+            max_length=512,
+            do_sample=True, 
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id
+        )
+    for j, output in enumerate(outputs):
+        full_text = tokenizer.decode(output, skip_special_tokens=True)
+        answer = full_text.split("Answer:")[-1].strip()
+        ans = {'Q': batch_texts[j], 'A': answer}
+        results.append(ans)
     
 with open("./res/base.json", 'w') as f:
     json.dump(results, f, ensure_ascii=False, indent=4)
+
+
+
 # for activation_mask in activation_masks:
 #     if activation_mask:
 #         def factory(mask):

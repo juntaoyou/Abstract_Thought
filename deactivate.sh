@@ -1,1 +1,1 @@
-python deactivate.py --activation_mask
+python deactivate.py --activation_mask /NAS/yjt/Abstract_Thought/activation_mask/Qwen3-8B.single

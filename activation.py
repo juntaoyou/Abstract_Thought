@@ -3,17 +3,15 @@ import torch.nn.functional as F
 import numpy as np
 # torch.set_printoptions(threshold=np.inf)
 keys =  ['A','B']
-def activation(activation_probs, conditioned_probs, num_layers, save_type="single"):
+def activation(activation_probs, num_layers, save_type="single"):
     top_rate = 0.01
     filter_rate = 0.95
     activation_bar_ratio = 0.95
-    normed_conditioned_probs = conditioned_probs / conditioned_probs.sum(dim=-1, keepdim=True)
-    normed_conditioned_probs[torch.isnan(normed_conditioned_probs)] = 0
-    # print("Con:", normed_conditioned_probs)
-    normed_activation_probs = activation_probs / activation_probs.sum(dim=-1, keepdim=True)
-    normed_activation_probs[torch.isnan(normed_activation_probs)] = 0
+    
+    normed_activation_probs = F.softmax(activation_probs, dim = -1)
+    # activation_probs[torch.isnan(activation_probs)] = 0
     # print("Act:",normed_activation_probs)
-    log_probs = torch.where(normed_conditioned_probs > 0, normed_conditioned_probs.log(), 0)
+    log_probs = torch.where(normed_activation_probs > 0, normed_activation_probs.log(), 0)
     entropy = -torch.sum(normed_activation_probs * log_probs, dim=-1)
     largest = False
     print(entropy)
@@ -58,47 +56,18 @@ def activation(activation_probs, conditioned_probs, num_layers, save_type="singl
 n, conditioned_probs, activation_probs = [], [], []
 model_suffix = "Qwen3-8B"
 base_data = torch.load(f'data/activation.train.{model_suffix}.base')
-base_probs = torch.tensor(base_data['over_zero']) / torch.tensor(base_data["n"])
-print("Base:", base_probs)
+base_probs = base_data['over_zero'] / base_data["n"]
+# print("Base:", base_probs)
 for preference in ['Expertise','Informativeness','Style']:
     for index in keys:
         data = torch.load(f'data/activation.train.{model_suffix}.{preference}.{index}')
         n.append(data['n'])
-        activation_probs.append(data['over_zero'] / data['n'])
-        conditioned_probs.append(data['over_zero'] / base_probs /  data['n'])
+        x = data['over_zero'] / data['n']
+        preference_probs = (x - base_probs) / (base_probs + 1e-10)
+        preference_probs[torch.isnan(preference_probs)] = 0
+        # print(preference_probs.max())
+        activation_probs.append(preference_probs)
         
-conditioned_probs = torch.stack(conditioned_probs, dim=-1)
 activation_probs = torch.stack(activation_probs, dim=-1)
 num_layers, _ , _ = activation_probs.shape
-activation(activation_probs, conditioned_probs, num_layers, save_type="single")
-
-n, conditioned_probs, activation_probs = [], [], []
-for preference in ['Expertise_Informativeness','Informativeness_Style','Expertise_Style']:
-    for index1 in keys:
-        for index2 in keys:
-            index = index1 + index2
-            data = torch.load(f'data/activation.train.{model_suffix}.{preference}.{index}')
-            n.append(data['n'])
-            activation_probs.append(data['over_zero'] / data['n'])
-            conditioned_probs.append(data['over_zero'] / base_probs /  data['n'])
-        
-conditioned_probs = torch.stack(conditioned_probs, dim=-1)
-activation_probs = torch.stack(activation_probs, dim=-1)
-num_layers, _ , _ = activation_probs.shape
-activation(activation_probs, conditioned_probs, num_layers, save_type="double")
-
-n, conditioned_probs, activation_probs = [], [], []
-preference = "Expertise_Informativeness_Style"
-for index1 in keys:
-    for index2 in keys:
-        for index3 in keys:
-            index = index1 + index2 + index3
-            data = torch.load(f'data/activation.train.{model_suffix}.{preference}.{index}')
-            n.append(data['n'])
-            activation_probs.append(data['over_zero'] / data['n'])
-            conditioned_probs.append(data['over_zero'] / base_probs /  data['n'])
-        
-conditioned_probs = torch.stack(conditioned_probs, dim=-1)
-activation_probs = torch.stack(activation_probs, dim=-1)
-num_layers, _ , _ = activation_probs.shape
-activation(activation_probs, conditioned_probs, num_layers, save_type="triple")
+activation(activation_probs, num_layers, save_type="single")

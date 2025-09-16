@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import torch
 import matplotlib
 import numpy as np
+from matplotlib import cm
 plt.rcParams['figure.facecolor'] = 'white'
 plt.rcParams['axes.facecolor'] = 'white'
 plt.rcParams['patch.facecolor'] = 'white'
@@ -182,14 +183,14 @@ def plot2_quantile(base_file_path, file_paths, title = "Expertise_A_Informativen
 
     plt.savefig(f"{title}_quantile_{q}.pdf")
     
-def plot3(base_file_path, file_paths, title = "Expertise_A_Informativeness_A", labels = None):
+def plot3(base_file_path, file_paths, title = "Expertise_A_Informativeness_A", labels = None, tag='over_zero'):
     stats = load(base_file_path)
     num_layers, inter_size = stats.shape
     if len(file_paths) != 4: raise ValueError
-    P1_stats = load(file_paths[0])
-    P2_stats = load(file_paths[1])
-    P3_stats = load(file_paths[2])
-    P123_stats = load(file_paths[3])
+    P1_stats = load(file_paths[0],label=tag)
+    P2_stats = load(file_paths[1],label=tag)
+    P3_stats = load(file_paths[2],label=tag)
+    P123_stats = load(file_paths[3],label=tag)
 
     positions1 = (P1_stats > stats).float().cpu()
     positions2 = (P2_stats > stats).float().cpu()
@@ -218,7 +219,7 @@ def plot3(base_file_path, file_paths, title = "Expertise_A_Informativeness_A", l
     ax.plot(list(range(num_layers)), y5, linewidth=4, label=labels[4])
     ax.set_xlabel("Layer Num", fontsize=30)
     ax.set_ylabel("Num of Preference-Specific Neurons", fontsize=30)
-    ax.text(15, 2500, s = f"Overlapping Ratio: {round(p,3)}", fontsize=25, color='black') # 添加文本
+    ax.text(15, 0.8, s = f"Overlapping Ratio: {round(p,3)}", fontsize=25, color='black') # 添加文本
     ax.legend(fontsize=25, loc='lower right')
     ax.tick_params(axis='both', labelsize=25, pad=15)
 
@@ -244,13 +245,13 @@ def plot4():
     data2 = table2['over_zero'] / table2['n']
     data3 = table3['over_zero'] / table3['n']
     data4 = table4['over_zero'] / table4['n']
-    # data2 = data2 - data
-    # data3 = data3 - data
-    # data4 = data4 - data
+    data2 = (data2 - data) / (data + 1e-10)
+    data3 = (data3 - data) / (data + 1e-10)
+    data4 = (data4 - data) / (data + 1e-10)
     import numpy as np
     num_layers, inter_size = data.shape
     x, y = list(range(num_layers)), list(range(inter_size))
-    topk_ratios = [0.01] + list(map(lambda x: x * 0.05, list(range(1, 11))))
+    topk_ratios = [0.01] + list(map(lambda x: x * 0.05, list(range(1, 21))))
     res = []
     for topk_ratio in topk_ratios:
         topk_num = int(topk_ratio * inter_size)
@@ -278,9 +279,9 @@ def plot4():
 
         res.append(round(intersection / union, 3))
     plt.figure(figsize=(14,10))
-    plt.plot(topk_ratios, res, linewidth=3, color='blue', label="Probability with context and preference")
-    plt.xlabel("Ratio of Top Value", fontsize=30, fontweight='bold')
-    plt.ylabel("IoU", fontsize=30, fontweight='bold')
+    plt.plot(topk_ratios, res, linewidth=3, color='blue', label="Probability only difference")
+    plt.xlabel("Ratio of Top Value", fontsize=30)
+    plt.ylabel("IoU", fontsize=30)
     plt.tick_params(axis='both', labelsize=25, pad=15)
     plt.grid(True)
     plt.savefig("ratios2.pdf")
@@ -294,36 +295,73 @@ def plot5():
     data2 = table2['over_zero'] / table2['n']
     data3 = table3['over_zero'] / table3['n']
     data4 = table4['over_zero'] / table4['n']
-    data2 = data2 - data
-    data3 = data3 - data
-    data4 = data4 - data
+    data2 = (data2 - data) / (data + 1e-10)
+    data3 = (data3 - data) / (data + 1e-10)
+    data4 = (data4 - data) / (data + 1e-10)
+    p = 0.8
+    q = 0.2
+    x1 = torch.quantile(data2, p).item()
+    x2 = torch.quantile(data3, p).item()
+    x3 = torch.quantile(data3, p).item()
+    
+    y = torch.quantile(data, q).item()
+    
+    data2 = torch.where(data >= y, data2, 0)
+    data3 = torch.where(data >= y, data3, 0)
+    data4 = torch.where(data >= y, data4, 0)
+    data2 = torch.where(data2 >= x1, data2, 0)
+    data3 = torch.where(data3 >= x2, data3, 0)
+    data4 = torch.where(data4 >= x3, data4, 0)
+    # data4 = torch.where(data4 >= -1, data4, -1)
     # positions = data3 > data
+    # print(data2)
     num_layers, inter_size = data.shape
     x, y = list(range(num_layers)), list(range(inter_size))
     xv, yv = np.meshgrid(x, y)
     fig, ax = plt.subplots(figsize=(10,10),subplot_kw={"projection": "3d"})
-    surf = ax.plot_surface(xv, yv, data3.numpy().transpose(), cmap=cm.coolwarm, 
+    surf = ax.plot_surface(xv, yv, data2.numpy().transpose(), cmap=cm.coolwarm, 
                         linewidth=0, antialiased=True)
-    # ax.plot_surface(xv, yv, np.zeros_like(xv), 
-    #                        linewidth=0, antialiased=True)
-    # fig.colorbar(surf, shrink=0.5, aspect=5)
 
-    # 设置坐标轴标签
     ax.set_xlabel('Layer Num', fontsize=20,labelpad=25)
     ax.set_ylabel('Hidden Size', fontsize=20,labelpad=25)
     ax.set_zlabel('Probability Difference', fontsize=20, labelpad=25)
-    ax.set_zlim(-0.0008, 0.0008)
+    ax.set_zlim(0, 8)
     ax.tick_params(axis='both', labelsize=10)
     ax.ticklabel_format(style='scientific', axis='z')
     ax.grid(visible=False)
     fig.colorbar(surf, shrink=0.3, location='left', pad=0.001)
     fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
-    # 设置标题
-    # ax.set_title(f'{a}×{b}数据的三维可视化')
+    plt.savefig("test2.pdf")
+    
+    fig, ax = plt.subplots(figsize=(10,10),subplot_kw={"projection": "3d"})
+    surf = ax.plot_surface(xv, yv, data3.numpy().transpose(), cmap=cm.coolwarm, 
+                        linewidth=0, antialiased=True)
 
-    # 显示图形
-    plt.show()
+    ax.set_xlabel('Layer Num', fontsize=20,labelpad=25)
+    ax.set_ylabel('Hidden Size', fontsize=20,labelpad=25)
+    ax.set_zlabel('Probability Difference', fontsize=20, labelpad=25)
+    ax.set_zlim(0, 8)
+    ax.tick_params(axis='both', labelsize=10)
+    ax.ticklabel_format(style='scientific', axis='z')
+    ax.grid(visible=False)
+    fig.colorbar(surf, shrink=0.3, location='left', pad=0.001)
+    fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
     plt.savefig("test3.pdf")
+    
+    fig, ax = plt.subplots(figsize=(10,10),subplot_kw={"projection": "3d"})
+    surf = ax.plot_surface(xv, yv, data4.numpy().transpose(), cmap=cm.coolwarm, 
+                        linewidth=0, antialiased=True)
+
+    ax.set_xlabel('Layer Num', fontsize=20,labelpad=25)
+    ax.set_ylabel('Hidden Size', fontsize=20,labelpad=25)
+    ax.set_zlabel('Probability Difference', fontsize=20, labelpad=25)
+    ax.set_zlim(0, 8)
+    ax.tick_params(axis='both', labelsize=10)
+    ax.ticklabel_format(style='scientific', axis='z')
+    ax.grid(visible=False)
+    fig.colorbar(surf, shrink=0.3, location='left', pad=0.001)
+    fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
+    plt.savefig("test4.pdf")
     
 def plot6(base_file_path, file_path):
     data = torch.load(base_file_path)
@@ -372,7 +410,7 @@ def plot7(base_file_path, file_paths):
         data = torch.load(path)
         stats = data['over_zero'] / data['n']
 
-        y = (stats - stats1) / stats1
+        y = (stats - stats1) / (stats1 + 1e-10)
         # print(y)
         y[torch.isnan(y)] = 0
         x = torch.quantile(y, 0.5).item()
@@ -401,7 +439,7 @@ def plot8(base_file_path, file_paths):
         data = torch.load(path)
         stats = data['over_zero'] / data['n']
 
-        y = (stats - stats1) / stats1
+        y = (stats - stats1) / (stats1 + 1e-10)
         y[torch.isnan(y)] = 0
         ratio = ((y > 0).sum(dim = -1) / inter_size)
         ax.plot(list(range(num_layers)), ratio, label=f"{preference}_{index}", linewidth=3)
@@ -436,3 +474,24 @@ def plot8_quantile(base_file_path, file_paths, q=0.25):
     ax.legend(fontsize=20, loc="lower right")
     ax.tick_params(axis='both', labelsize=20, pad=12)
     plt.savefig(f"eval_quantile_{q}.pdf")
+    
+def plot_entropy():
+    data = torch.load("/NAS/yjt/Abstract_Thought/activation_mask/Qwen3-8B.single")
+    # stats1 = data['over_zero'] / data['n']
+    # print(len(data))
+    preference_set = ["Expertise", "Informativeness", "Style"]
+    keys_set = ['A', 'B']
+
+    nums = [[0 for _ in range(36)] for _ in range(6)]
+    for idx, d in enumerate(data):
+        for i in range(36):
+            nums[idx][i] = len(d[i])
+    plt.figure(figsize=(14,10))  
+    nums = np.array(nums)
+    for i in range(6):
+        plt.plot(list(range(36)), nums[i], label = f"{preference_set[i // 2]}_{keys_set[i % 2]}", linewidth=3)
+    plt.xlabel("Layer Num", fontsize=30)
+    plt.ylabel("Num of Preference-Specific neurons", fontsize=30)
+    plt.legend(fontsize=25)
+    plt.tick_params(axis='both', labelsize=20, pad=12)
+    plt.savefig("test.pdf")     
