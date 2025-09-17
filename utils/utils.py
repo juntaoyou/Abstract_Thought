@@ -10,6 +10,7 @@ import os
 from transformers import AutoTokenizer
 import re
 import datetime
+import numpy as np
 nowtime = datetime.datetime.now()
 date_string = nowtime.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -58,35 +59,24 @@ user_content = (
 "Score:\n"
 )
 
-def evaluate_with_judge_model(model_name, prompts, responses, batch_size=16, system_prompt="You are a helpful assistant."):
+def evaluate_with_judge_model(llm, sampling_params, queries, batch_size=16, system_prompt="You are a helpful assistant.", tokenizer=None):
     scores = []
     total = len(prompts)
-    sampling_params = SamplingParams(
-        max_tokens=16,
-        skip_special_tokens=True,
-        temperature=0.8,
-        top_p=0.95
-    )
-    llm = LLM(model_name, gpu_memory_utilization=0.9)
-    tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side='left')
     pattern = r"^\s*(\d+\.?\d*)"
     # pattern = r"\d"
     for i in tqdm(range(0, total, batch_size), desc="Loading Data: "):
         end_idx = min(total, i + batch_size)
-        batch_prompts = prompts[i: end_idx]
-        batch_responses = responses[i: end_idx]
-        querys = [[{"role":'system',"content": system_prompt},
-                    {"role":'user', 'content': user_content.format_map({'query': q, 'response':r})}]
-                    for q, r in zip(batch_prompts, batch_responses)]
-        chat_prompts = tokenizer.apply_chat_template(querys, tokenize=False, add_generation_prompt=True)
+        batch_queries = queries[i: end_idx]
+        chat_prompts = tokenizer.apply_chat_template(batch_queries, tokenize=False, add_generation_prompt=True)
         outputs = llm.generate(chat_prompts, sampling_params)
         batch_scores = [int(re.match(pattern, score.outputs[0].text).group(1))
             for score in outputs]
         for score in batch_scores:
-            if score < 0 or score > 5:
+            if score < 1 or score > 6:
                 raise ValueError("Invalid score value.")
         scores.extend(batch_scores)
-    return scores
+        scores = np.array(scores)
+    return scores , np.mean(scores)
     
 
 def process_and_evaluate(
@@ -212,45 +202,4 @@ def evaluate(file_path,
     
     print(f"评估完成，结果已保存至 {output_file}")
     return all_responses
-
-# if __name__ == "__main__":
-    
-#     import argparse
-#     parser = argparse.ArgumentParser(description="Pre Exp") 
-#     parser.add_argument("--generate", action="store_true")
-#     parser.add_argument("--eval", action="store_true")
-#     parser.add_argument("--add_principle", action="store_true")
-#     parser.add_argument("--principle", type=str, default=None)
-#     args = parser.parse_args()
-#     if args.generate:
-#         if not args.principle:
-#             response_file=f"./predictions/pre/responses.json"
-#         else:
-#             os.makedirs(f"./predictions/pre/{args.principle}",exist_ok=True)
-#             response_file=f"./predictions/pre/{args.principle}/responses.json"
-#         process_and_evaluate(
-#             generator_model_name="../models/Qwen2.5-3B-Instruct",
-#             batch_size=16,
-#             num_beams=10,
-#             output_file=response_file,
-#             add_principle=args.add_principle,
-#             principle=args.principle
-#         )
-#     if args.eval:
-#         if not args.principle:
-#             response_file=f"./predictions/pre/responses.json"
-#             evaluate(file_path=response_file, 
-#                 principle="helpful", 
-#                 output_file=f"./predictions/pre/{args.principle}_scores.json")
-#             evaluate(file_path=response_file, 
-#                 principle="correct", 
-#                 output_file=f"./predictions/pre/{args.principle}_scores.json")
-#             evaluate(file_path=response_file, 
-#                 principle="coherent", 
-#                 output_file=f"./predictions/pre/{args.principle}_scores.json")
-#         else:
-#             response_file=f"./predictions/pre/{args.principle}/responses.json"
-#             evaluate(file_path=response_file, 
-#                 principle=args.principle, 
-#                 output_file=f"./predictions/pre/{args.principle}/scores.json")
     

@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = '2'
+os.environ["CUDA_VISIBLE_DEVICES"] = '6'
 from types import MethodType
 from datasets import load_from_disk
 import torch
@@ -33,12 +33,12 @@ else:
 max_length = model.config.max_length
 num_layers = model.config.num_hidden_layers
 intermediate_size = model.config.intermediate_size
-batch_size = 8
+batch_size = 16
 
 preference_set = ["Expertise", "Informativeness", "Style"]
 keys_set = ['A', 'B']
 
-output_folder = f"./res"
+output_folder = f"./res1"
 os.makedirs(output_folder, exist_ok=True)
 target_layers = [
     f"model.layers.{i}.mlp"  for i in range(num_layers)
@@ -85,7 +85,7 @@ for idx, activation_mask in enumerate(activation_masks):
     for p in preference_set:
         for k in keys_set:
             data_A = process(data, instructions[p][k])
-            data_A = [f"Question: {q}\nAnswer:" for q in data_A]
+            data_A = [f"Question: {q}\nAnswer:\n<think>\n\n</think>" for q in data_A]
             results = []
             for i in tqdm(range(0, total_len, batch_size)):
                 end_idx = min(total_len, i + batch_size)
@@ -102,7 +102,7 @@ for idx, activation_mask in enumerate(activation_masks):
                     
                 for j, output in enumerate(outputs):
                     full_text = tokenizer.decode(output, skip_special_tokens=True)
-                    answer = full_text.split("Answer:")[-1].strip()
+                    answer = full_text.split("Answer:")[-1].strip("<think>\n\n</think>").strip()
                     ans = {'Q': batch_texts[j], 'A': answer}
                     results.append(ans)
             output_file = f"{output_folder}/{p}_{k}.deactivate.{activation_mask_name}.{preference_set[idx // 2]}_{keys_set[idx % 2]}.json"

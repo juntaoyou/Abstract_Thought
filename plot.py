@@ -20,11 +20,12 @@ matplotlib.rcParams['ps.fonttype'] = 42
 file_paths = [
     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base",
     "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.A",
-              "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.A",
-              "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Style.A",
-              "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.B",
-              "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.B",
-              "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Style.B"]
+    "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.B",
+    "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.A",
+    "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.B",
+    "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Style.A",
+    "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Style.B"    
+]
 # data = torch.load(base_file_path)
 # print(data['activated_value'] / data['n'])
 
@@ -32,23 +33,189 @@ base_file_path = "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base"
 data = torch.load(base_file_path)
 
 stats = data['over_zero'] / data['n']
-# p, q = 0.9, 0.9
+y = torch.quantile(stats, 0.2).item()
+print(y)
+# positions1 = (stats > 0).float()
+num_layers, inter_size = stats.shape
+total_num = num_layers * inter_size
+count = []
+for i, path in enumerate(file_paths):
+    # file_path = "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.A"
+    data = torch.load(path)
+    stats1 = data['over_zero'] / data['n']
+    # positions2 = (stats1 > 0).float()
+    data_p = (stats1 - stats) / (stats + 1e-10)
+    data_p = torch.where(stats >= y, data_p ,0)
+    x = torch.quantile(data_p, 0.99).item()
+    positions1 = (data_p >= x).float()
+    if i == 0:
+        positions = positions1
+    else:
+        positions = torch.logical_and(positions1, positions).float()
+    count.append(positions1)
+    # intersection = torch.logical_and(positions1, positions2).float()
+    # target_neurons = positions2 - intersection
+    # count.append(target_neurons.sum(-1))
+fig, ax = plt.subplots(figsize=(20,15))
+preference_set = ["Expertise","Informativeness","Style"]
+keys_set = ['A', 'B']
+
+indices = [[[] for _ in range(num_layers)] for _ in range(6)]
+for i in range(len(count)):
+    count[i] = count[i] - positions
+    plt.plot(list(range(num_layers)), count[i].sum(-1) / inter_size, label=f"{preference_set[i // 2]}_{keys_set[i % 2]}",linewidth=3)
+    rows_idx, cols_idx =  torch.where(count[i] > 0)
+    for r, c in zip(rows_idx, cols_idx):
+        indices[i][r].append(c)
+    for j in range(num_layers):
+        indices[i][j] = torch.tensor(indices[i][j]).long()
+    # print(count[i].sum())
+torch.save(indices, "./activation_mask/Qwen3-8B.All")
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.plot(list(range(num_layers)), positions.sum(dim=-1) / inter_size, label=f"Overlapping",linewidth=3)
+ax.set_xlabel("Layer Num", fontsize=30)
+ax.set_ylabel("Num of Preference-specific neurons", fontsize=30)
+ax.legend(fontsize=25,bbox_to_anchor=(0.5, 1.1), loc="upper center",ncol=4)
+# plt.tight_layout()
+ax.tick_params(axis='both',labelsize=25, pad=12)
+plt.savefig("ALL.pdf")
+
+# file_paths = [
+#     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base",
+#     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.A",
+#     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.B",
+#     "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.A",
+#     "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.B",
+#     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Style.A",
+#     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Style.B"    
+# ]
+# # data = torch.load(base_file_path)
+# # print(data['activated_value'] / data['n'])
+
+# base_file_path = "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base"
+# data = torch.load(base_file_path)
+
+# stats = data['over_zero'] / data['n']
+# # positions1 = (stats > 0).float()
 # num_layers, inter_size = stats.shape
 # total_num = num_layers * inter_size
-# x1 = torch.quantile(stats, p).item()
-# positions1 = (stats >= x1).float()
 # count = []
-# for path in file_paths:
+# for i, path in enumerate(file_paths):
 #     # file_path = "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.A"
 #     data = torch.load(path)
 #     stats1 = data['over_zero'] / data['n']
-#     x2 = torch.quantile(stats1, q).item()
-#     positions2 = (stats1 >= x2).float()
-#     intersection = torch.logical_and(positions1, positions2).float()
-#     target_neurons = positions2 - intersection
-#     count.append(target_neurons.sum(-1))
-# preference_set = ["Expertise", "Informativeness", "Style"]
+#     # positions2 = (stats1 > 0).float()
+#     data_p = (stats1 - stats) / (stats + 1e-10)
+#     # data_p[torch.isnan(data_p)] = 0
+#     data_p = torch.where(stats != 0, data_p ,0)
+#     x = torch.quantile(data_p, 0.99).item()
+#     positions1 = (data_p >= x).float()
+#     if i == 0:
+#         positions = positions1
+#     else:
+#         positions = torch.logical_and(positions1, positions).float()
+#     count.append(positions1)
+#     # intersection = torch.logical_and(positions1, positions2).float()
+#     # target_neurons = positions2 - intersection
+#     # count.append(target_neurons.sum(-1))
+# fig, ax = plt.subplots(figsize=(20,15))
+# preference_set = ["Informativeness"]
 # keys_set = ['A', 'B']
+
+# indices = [[[] for _ in range(num_layers)] for _ in range(2)]
+# for i in range(len(count)):
+#     count[i] = count[i] - positions
+#     plt.plot(list(range(num_layers)), count[i].sum(-1) / inter_size, label=f"{preference_set[i // 2]}_{keys_set[i % 2]}",linewidth=3)
+#     rows_idx, cols_idx =  torch.where(count[i] > 0)
+#     for r, c in zip(rows_idx, cols_idx):
+#         indices[i][r].append(c)
+#     for j in range(num_layers):
+#         indices[i][j] = torch.tensor(indices[i][j]).long()
+#     # print(count[i].sum())
+# # print(indices)
+# torch.save(indices, "./activation_mask/Qwen3-8B.Informativeness")
+# ax.spines['top'].set_visible(False)
+# ax.spines['right'].set_visible(False)
+# ax.plot(list(range(num_layers)), positions.sum(dim=-1) / inter_size, label=f"Overlapping",linewidth=3)
+# ax.set_xlabel("Layer Num", fontsize=30)
+# ax.set_ylabel("Num of Preference-specific neurons", fontsize=30)
+# ax.legend(fontsize=25,bbox_to_anchor=(0.5, 1.1), loc="upper center",ncol=4)
+# # plt.tight_layout()
+# ax.tick_params(axis='both',labelsize=25, pad=12)
+# plt.savefig("Informativeness.pdf")
+
+
+# file_paths = [
+#     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base",
+#     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.A",
+#     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.B",
+#     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.A",
+#     # "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Informativeness.B",
+#     "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Style.A",
+#     "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Style.B"    
+# ]
+# # data = torch.load(base_file_path)
+# # print(data['activated_value'] / data['n'])
+
+# base_file_path = "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.base"
+# data = torch.load(base_file_path)
+
+# stats = data['over_zero'] / data['n']
+# # positions1 = (stats > 0).float()
+# num_layers, inter_size = stats.shape
+# total_num = num_layers * inter_size
+# count = []
+# for i, path in enumerate(file_paths):
+#     # file_path = "/NAS/yjt/Abstract_Thought/data/activation.train.Qwen3-8B.Expertise.A"
+#     data = torch.load(path)
+#     stats1 = data['over_zero'] / data['n']
+#     # positions2 = (stats1 > 0).float()
+#     data_p = (stats1 - stats) / (stats + 1e-10)
+#     # data_p[torch.isnan(data_p)] = 0
+#     data_p = torch.where(stats != 0, data_p ,0)
+#     x = torch.quantile(data_p, 0.99).item()
+#     positions1 = (data_p >= x).float()
+#     if i == 0:
+#         positions = positions1
+#     else:
+#         positions = torch.logical_and(positions1, positions).float()
+#     count.append(positions1)
+#     # intersection = torch.logical_and(positions1, positions2).float()
+#     # target_neurons = positions2 - intersection
+#     # count.append(target_neurons.sum(-1))
+# fig, ax = plt.subplots(figsize=(20,15))
+# preference_set = ["Style"]
+# keys_set = ['A', 'B']
+
+# indices = [[[] for _ in range(num_layers)] for _ in range(2)]
+# for i in range(len(count)):
+#     count[i] = count[i] - positions
+#     plt.plot(list(range(num_layers)), count[i].sum(-1) / inter_size, label=f"{preference_set[i // 2]}_{keys_set[i % 2]}",linewidth=3)
+#     rows_idx, cols_idx =  torch.where(count[i] > 0)
+#     for r, c in zip(rows_idx, cols_idx):
+#         indices[i][r].append(c)
+#     for j in range(num_layers):
+#         indices[i][j] = torch.tensor(indices[i][j]).long()
+#     # print(count[i].sum())
+# torch.save(indices, "./activation_mask/Qwen3-8B.Style")
+# ax.spines['top'].set_visible(False)
+# ax.spines['right'].set_visible(False)
+# ax.plot(list(range(num_layers)), positions.sum(dim=-1) / inter_size, label=f"Overlapping",linewidth=3)
+# ax.set_xlabel("Layer Num", fontsize=30)
+# ax.set_ylabel("Num of Preference-specific neurons", fontsize=30)
+# ax.legend(fontsize=25,bbox_to_anchor=(0.5, 1.1), loc="upper center",ncol=4)
+# # plt.tight_layout()
+# ax.tick_params(axis='both',labelsize=25, pad=12)
+# plt.savefig("Style.pdf")
+
+
+    
+
+
+
+# print(count[0].sum(-1))
+
 # plt.figure(figsize=(14,10))    
 # count = np.array(count)
 # for i in range(6):
@@ -66,7 +233,7 @@ stats = data['over_zero'] / data['n']
 # print(target_neurons.sum(-1))
 # plot4()
 
-# plot8_quantile(base_file_path, file_paths, q = 0.95)
+# plot8_quantile(base_file_path, file_paths, q = 0.99)
 # plot8_quantile(base_file_path, file_paths, q = 0.8)
 # plot8_quantile(base_file_path, file_paths, q = 0.85)
 # plot8_quantile(base_file_path, file_paths, q = 0.7)
@@ -273,4 +440,4 @@ labels = ["Expertise_A",
 
 # plot3(base_file_path, file_paths, title="Expertise_A_Informativeness_A_Style_A", labels=labels)
 
-plot5()
+# plot5()

@@ -4,25 +4,25 @@ import matplotlib.pyplot as plt
 import torch
 import numpy as np
 
-data = torch.load("/NAS/yjt/Abstract_Thought/activation_mask/Qwen3-8B.single")
-# stats1 = data['over_zero'] / data['n']
-# print(len(data))
-preference_set = ["Expertise", "Informativeness", "Style"]
-keys_set = ['A', 'B']
-plt.figure(figsize=(14,10))  
-nums = [[0 for _ in range(36)] for _ in range(6)]
-for idx, d in enumerate(data):
-    for i in range(36):
-        nums[idx][i] = len(d[i])
+# data = torch.load("/NAS/yjt/Abstract_Thought/activation_mask/Qwen3-8B.single")
+# # stats1 = data['over_zero'] / data['n']
+# # print(len(data))
+# preference_set = ["Expertise", "Informativeness", "Style"]
+# keys_set = ['A', 'B']
+# plt.figure(figsize=(14,10))  
+# nums = [[0 for _ in range(36)] for _ in range(6)]
+# for idx, d in enumerate(data):
+#     for i in range(36):
+#         nums[idx][i] = len(d[i])
 
-nums = np.array(nums)
-for i in range(6):
-    plt.plot(list(range(36)), nums[i], label = f"{preference_set[i // 2]}_{keys_set[i % 2]}", linewidth=3)
-plt.xlabel("Layer Num", fontsize=30)
-plt.ylabel("Num of Preference-Specific neurons", fontsize=30)
-plt.legend(fontsize=25)
-plt.tick_params(axis='both', labelsize=20, pad=12)
-plt.savefig("test.pdf")
+# nums = np.array(nums)
+# for i in range(6):
+#     plt.plot(list(range(36)), nums[i], label = f"{preference_set[i // 2]}_{keys_set[i % 2]}", linewidth=3)
+# plt.xlabel("Layer Num", fontsize=30)
+# plt.ylabel("Num of Preference-Specific neurons", fontsize=30)
+# plt.legend(fontsize=25)
+# plt.tick_params(axis='both', labelsize=20, pad=12)
+# plt.savefig("test.pdf")
 # num_layers, inter_size = stats1.shape
 
 

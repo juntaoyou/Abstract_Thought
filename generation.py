@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 from types import MethodType
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '7'
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -15,11 +15,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--model_name", type=str, default="../models/Qwen3-8B")
 parser.add_argument("-a", "--activation_mask", type=str, default="")
 args = parser.parse_args()
-batch_size = 2
+batch_size = 16
 model_name = "../models/Qwen3-8B"
 tokenizer = AutoTokenizer.from_pretrained(args.model_name, padding_side='left')
 model = AutoModelForCausalLM.from_pretrained(
-    model_name,
+    args.model_name,
     device_map="auto",
     torch_dtype=torch.bfloat16,
     cache_dir="/NAS/yjt/HuggingfaceCache"
@@ -50,7 +50,7 @@ target_layers = [
 
 data = load_from_disk("/NAS/yjt/Mydatasets/PSoups_queries")['query']
 total_len = len(data)
-data_processed = [f"Question: {q}\nAnswer:" for q in data]
+data_processed = [f"Question: {q}\nAnswer:\n<think>\n\n</think>" for q in data]
 
 # print(len(inputs))
 results = []
@@ -77,7 +77,7 @@ for i in tqdm(range(0, total_len, batch_size)):
         )
     for j, output in enumerate(outputs):
         full_text = tokenizer.decode(output, skip_special_tokens=True)
-        answer = full_text.split("Answer:")[-1].strip()
+        answer = full_text.split("Answer:")[-1].strip("<think>\n\n</think>\n\n").strip()
         ans = {'Q': batch_texts[j], 'A': answer}
         results.append(ans)
     

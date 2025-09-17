@@ -397,7 +397,7 @@ def plot6(base_file_path, file_path):
 def plot7(base_file_path, file_paths):
     data = torch.load(base_file_path)
     stats1 = data['over_zero'] / data['n']
-    stats1[stats1 == 0] = 1e-10
+    # stats1[stats1 == 0] = 1e-10
     num_layers, inter_size = stats1.shape
     fig, ax = plt.subplots(figsize=(12,10))
     for path in file_paths:
@@ -426,7 +426,7 @@ def plot7(base_file_path, file_paths):
 def plot8(base_file_path, file_paths):
     data = torch.load(base_file_path)
     stats1 = data['over_zero'] / data['n']
-    stats1[stats1 == 0] = 1e-10
+    # stats1[stats1 == 0] = 1e-10
     num_layers, inter_size = stats1.shape
     fig, ax = plt.subplots(figsize=(12,10))
     for path in file_paths:
@@ -453,7 +453,7 @@ def plot8_quantile(base_file_path, file_paths, q=0.25):
     data = torch.load(base_file_path)
     stats1 = data['over_zero'] / data['n']
     num_layers, inter_size = stats1.shape
-    
+    delta = torch.quantile(stats1, 0.2).item()
     fig, ax = plt.subplots(figsize=(12, 10))
     for path in file_paths:
         tags = path.split('/')[-1].split('.')
@@ -466,8 +466,9 @@ def plot8_quantile(base_file_path, file_paths, q=0.25):
         stats = data['over_zero'] / data['n']
         y = (stats - stats1) / stats1
         y[torch.isnan(y)] = 0
+        y = torch.where(stats1 >= delta, y, 0)
         x = torch.quantile(y, q)
-        ratio = ((y > x).sum(dim = -1) / inter_size).tolist()
+        ratio = ((y >= x).sum(dim = -1) / inter_size).tolist()
         ax.plot(list(range(num_layers)), ratio, label=f"{preference}_{index}", linewidth=3)
     ax.set_xlabel("Layer Num", fontsize=30)
     ax.set_ylabel("Ratio of Preference-related Neurons", fontsize=30)
